@@ -1,0 +1,7 @@
+# ~/lcm-inference-server/k8s/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lcm
+  labels:
+    app.kubernetes.io/part-of: lcm-inference-server

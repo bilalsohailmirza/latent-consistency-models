@@ -1,0 +1,76 @@
+# ~/lcm-inference-server/k8s/model-download-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-lcm-model
+  namespace: lcm
+spec:
+  # Retry once if it fails (e.g., network timeout)
+  backoffLimit: 2
+  # Auto-clean the Job 5 minutes after completion
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: model-downloader
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: downloader
+          # Use the same worker image — it already has
+          # diffusers, transformers, and torch installed
+          image: lcm-inference-server-worker:local
+          imagePullPolicy: Never
+          command: ["python", "-c"]
+          args:
+            - |
+              import os, time
+
+              # Point HuggingFace cache to the PVC mount
+              os.environ["HF_HOME"] = "/model-cache"
+              os.environ["TRANSFORMERS_CACHE"] = "/model-cache"
+
+              from diffusers import AutoPipelineForText2Image, AutoencoderTiny
+
+              print("=" * 60)
+              print("DOWNLOADING MODEL: Lykon/dreamshaper-8-lcm")
+              print("=" * 60)
+
+              start = time.time()
+
+              # Download the main pipeline
+              pipe = AutoPipelineForText2Image.from_pretrained(
+                  "Lykon/dreamshaper-8-lcm",
+                  safety_checker=None,
+                  requires_safety_checker=False,
+              )
+              print(f"Main model downloaded in {time.time() - start:.1f}s")
+
+              # Download the Tiny VAE
+              vae = AutoencoderTiny.from_pretrained("madebyollin/taesd")
+              print(f"Tiny VAE downloaded in {time.time() - start:.1f}s")
+
+              # Verify the files are on the PVC
+              total_size = 0
+              for root, dirs, files in os.walk("/model-cache"):
+                  for f in files:
+                      total_size += os.path.getsize(os.path.join(root, f))
+
+              print(f"Total cached: {total_size / 1e9:.2f} GB")
+              print("=" * 60)
+              print("MODEL DOWNLOAD COMPLETE")
+              print("=" * 60)
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "1000m"
+            limits:
+              memory: "6Gi"
+              cpu: "2000m"
+          volumeMounts:
+            - name: model-cache
+              mountPath: /model-cache
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: model-cache

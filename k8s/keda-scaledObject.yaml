@@ -1,0 +1,51 @@
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: lcm-worker-scaler
+  namespace: lcm
+spec:
+  # ── What to scale ──────────────────────────────────────────
+  scaleTargetRef:
+    name: lcm-worker
+
+  # ── Scaling boundaries ─────────────────────────────────────
+  minReplicaCount: 0                # Scale to zero when queue is empty
+  maxReplicaCount: 3                
+
+  # ── Timing ─────────────────────────────────────────────────
+  pollingInterval: 15               # Check Redis every 15 seconds
+  cooldownPeriod: 120               # Wait 2 minutes of empty queue before scaling down
+  idleReplicaCount: 0               # When fully idle, go to 0 replicas
+
+  # ── What to scale on ───────────────────────────────────────
+  triggers:
+    - type: redis
+      metadata:
+        
+        address: redis.lcm.svc.cluster.local:6379
+        # The Redis list key that Celery uses for the "inference" queue
+        listName: inference
+        
+        # With listLength "1": 1 task = 1 replica, 2 tasks = 2 replicas, etc.
+        listLength: "1"
+        # Only activate scaling when at least 1 task appears
+        activationListLength: "0"
+
+  # ── Scaling behavior ───────────────────────────────────────
+  advanced:
+    restoreToOriginalReplicaCount: false
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0     # Scale up immediately
+          policies:
+            - type: Pods
+              value: 1                      # Add 1 pod at a time
+              periodSeconds: 30             # Every 30 seconds max
+        scaleDown:
+          stabilizationWindowSeconds: 60    # Wait 60s before scaling down
+          policies:
+            - type: Pods
+              value: 1                      # Remove 1 pod at a time
+              periodSeconds: 60             # Every 60 seconds max

@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lcm-config
+  namespace: lcm
+data:
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  OUTPUT_DIR: "/app/outputs"
+  TORCH_NUM_THREADS: "4"
+  TORCH_DTYPE: "float32"
+  USE_TINY_VAE: "true"
+  MODEL_ID: "Lykon/dreamshaper-8-lcm"
+  PYTHONPATH: "/app"
+  # Point HuggingFace cache to the PVC
+  HF_HOME: "/model-cache"
+  HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+  TRANSFORMERS_CACHE: "/model-cache"
+  MODEL_SERVER_URL: "http://model-server:8001"

@@ -1,0 +1,45 @@
+# ~/lcm-inference-server/k8s/worker.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lcm-worker
+  namespace: lcm
+  labels:
+    app: lcm-worker
+spec:
+  selector:
+    matchLabels:
+      app: lcm-worker
+  template:
+    metadata:
+      labels:
+        app: lcm-worker
+    spec:
+      containers:
+        - name: worker
+          image: lcm-inference-server-worker:local
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: lcm-config
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "2000m"
+            limits:
+              memory: "8Gi"
+              cpu: "4000m"
+          volumeMounts:
+            - name: outputs
+              mountPath: /app/outputs
+            - name: model-cache
+              mountPath: /model-cache
+              # readOnly: true # can be readOnly if its confirmed that worker doesn't need any kind of writing to the mounted model-cache
+      volumes:
+        - name: outputs
+          persistentVolumeClaim:
+            claimName: generated-images
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: model-cache
+            readOnly: true

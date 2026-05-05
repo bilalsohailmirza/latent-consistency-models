@@ -1,0 +1,67 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lcm-api
+  namespace: lcm
+  labels:
+    app: lcm-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lcm-api
+  template:
+    metadata:
+      labels:
+        app: lcm-api
+    spec:
+      containers:
+        - name: api
+          image: lcm-inference-server-api:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: lcm-config
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: outputs
+              mountPath: /app/outputs
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+      volumes:
+        - name: outputs
+          persistentVolumeClaim:
+            claimName: generated-images
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lcm-api
+  namespace: lcm
+spec:
+  type: NodePort
+  selector:
+    app: lcm-api
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30080

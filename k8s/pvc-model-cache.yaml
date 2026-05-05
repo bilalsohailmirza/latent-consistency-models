@@ -1,0 +1,13 @@
+# ~/lcm-inference-server/k8s/pvc-model-cache.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-cache
+  namespace: lcm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
