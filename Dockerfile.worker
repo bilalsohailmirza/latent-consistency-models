@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+ENV PYTHONPATH=/app
+
+COPY worker/requirements.txt /app/worker/requirements.txt
+RUN pip install --no-cache-dir -r /app/worker/requirements.txt
+
+COPY shared/ /app/shared/
+COPY worker/ /app/worker/
+
+RUN mkdir -p /app/outputs
+
+CMD ["celery", "-A", "shared.celery_app", "worker", \
+     "--loglevel=info", \
+     "-c", "1", \
+     "-Q", "inference", \
+     "-P", "solo", \
+     "-n", "inference-worker@%h"]
