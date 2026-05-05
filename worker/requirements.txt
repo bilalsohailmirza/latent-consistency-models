@@ -1,0 +1,4 @@
+# ~/lcm-inference-server/worker/requirements.txt
+celery[redis]==5.4.0
+redis==5.2.1
+requests==2.32.3
