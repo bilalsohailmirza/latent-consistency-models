@@ -1,0 +1,62 @@
+services:
+
+  # ── Message Broker ────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── API Gateway ───────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - OUTPUT_DIR=/app/outputs
+    volumes:
+      - generated-images:/app/outputs
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Inference Worker ──────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - OUTPUT_DIR=/app/outputs
+      - TORCH_NUM_THREADS=4          # Match your i5 physical cores
+      - TORCH_DTYPE=float32          # CPU-optimized (NOT float16)
+      - USE_TINY_VAE=true            # Faster decoding, less RAM
+      - MODEL_ID=Lykon/dreamshaper-8-lcm
+    volumes:
+      - generated-images:/app/outputs
+      - model-cache:/root/.cache     # Persist downloaded model weights
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 8G                  # Cap memory so it doesn't eat all 24 GB
+        reservations:
+          memory: 4G
+
+volumes:
+  redis-data:
+  generated-images:
+  model-cache:
