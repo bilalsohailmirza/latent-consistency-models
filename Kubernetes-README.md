@@ -17,54 +17,28 @@ k3s was chosen over full Kubernetes, minikube, or kind because it installs as a 
 The deployment went through three iterations. Each solved a real problem encountered during testing.
 
 #### Iteration 1: Model Inside the Worker (emptyDir)
-
+![Alt text](images/Iteration-1.png)
 The first attempt was a direct translation of the Docker Compose setup into Kubernetes manifests. Each Celery worker pod contained PyTorch, diffusers, and the full LCM pipeline. The HuggingFace model cache was stored in an `emptyDir` volume — a temporary directory that exists only as long as the pod lives.
 
-```
-┌─────────────────────────────────────────────────────┐
-│ k3s cluster                                          │
-│                                                      │
-│  FastAPI ──► Redis ──► Worker pod (8 GB)             │
-│                        ├── PyTorch + diffusers       │
-│                        └── emptyDir (model cache)    │
-│                                                      │
-│  Problem: emptyDir wiped on every restart            │
-│  Cold start: ~25 minutes (re-download from HF)      │
-└─────────────────────────────────────────────────────┘
-```
 
 This worked functionally but had a critical flaw: the `emptyDir` volume is destroyed whenever the pod dies. A KEDA scale-to-zero event, a node restart, or an OOM kill all trigger a fresh 2 GB download from HuggingFace on the next startup. During testing, this resulted in 25+ minute cold starts — completely unusable for an autoscaling setup where workers are expected to start and stop frequently.
 
 The other problem was memory: each worker loaded the entire LCM pipeline (~4 GB at float32) into its own process memory. With the 8 GB per-worker limit, the maximum was 2-3 workers before exhausting the laptop's 24 GB of RAM.
 
 #### Iteration 2: PVC Model Cache + KEDA
+![Alt text](images/Iteration-2.png)
 
 The fix for the download problem was to separate model storage from the worker pod lifecycle. A PersistentVolumeClaim (PVC) backed by k3s's `local-path-provisioner` provides storage that survives pod restarts, scale-to-zero events, and even cluster reboots.
 
 A one-time Kubernetes Job downloads both models (Dreamshaper 8 LCM and the Tiny VAE) from HuggingFace into the PVC. This Job runs once, takes ~15-25 minutes, and never needs to run again unless you switch models. All worker pods then mount this PVC as a read-only volume, and the `HF_HOME` environment variable points the HuggingFace library at it.
 
-```
-┌─────────────────────────────────────────────────────┐
-│ k3s cluster                                          │
-│                                                      │
-│  FastAPI ──► Redis ──► Worker pod (8 GB)             │
-│                        ├── PyTorch + diffusers       │
-│                        └── PVC mount (read-only)     │
-│                                                      │
-│  PVC: model-cache (10 Gi)                            │
-│  ├── Dreamshaper 8 LCM (~2 GB)                      │
-│  └── TAESD Tiny VAE (~50 MB)                         │
-│                                                      │
-│  Cold start: ~30–60 seconds (load from disk)         │
-│  But still: 8 GB per worker, max 2-3 workers         │
-└─────────────────────────────────────────────────────┘
-```
 
 This reduced cold start from 25 minutes to ~30-60 seconds — loading from local NVMe is orders of magnitude faster than downloading over the network. KEDA autoscaling became practical: a scale-from-zero event now had an acceptable startup penalty.
 
 However, the memory problem remained. Each worker still loaded the full model into its own RAM. Two workers meant 16 GB used just for duplicate copies of the same weights. This severely limited the scaling ceiling on constrained hardware.
 
 #### Iteration 3: Dedicated Model Server (Final Architecture)
+![Alt text](images/Iteration-3.png)
 
 The solution was to separate the model from the worker entirely. Instead of every worker loading its own copy of the model, a single dedicated model server pod loads the pipeline once and exposes inference over an internal HTTP endpoint. Workers become thin, stateless clients — they pull tasks from Redis, send the prompt to the model server, save the returned image, and report back. No PyTorch, no diffusers, no model in worker memory.
 

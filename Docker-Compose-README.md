@@ -4,24 +4,7 @@ An async image generation server powered by Latent Consistency Models (LCM),
 built with FastAPI, Celery, and Redis.
 
 ## Architecture
-
-```
-                    ┌─────────────────────────────────────────────────┐
-                    │              Docker Compose Stack               │
-                    │                                                 │
-  HTTP Request      │  ┌──────────┐    ┌───────┐    ┌────────────┐    │
-  POST /generate ──►│  │  FastAPI │───►│ Redis │───►│   Celery   │    │
-                    │  │   :8000  │    │ :6379 │    │   Worker   │    │
-  GET /status/id ──►│  │          │◄───│       │◄───│            │    │
-                    │  │ (gateway)│    │(broker│    │  (PyTorch  │    │
-  GET /result/id ──►│  │          │    │  +    │    │    LCM     │    │
-                    │  │          │    │result)│    │  pipeline) │    │
-                    │  └──────────┘    └───────┘    └─────┬──────┘    │
-                    │       │                             │           │
-                    │       └──────── /app/outputs ───────┘           │
-                    │              (shared volume)                    │
-                    └─────────────────────────────────────────────────┘
-```
+![Alt text](images/docker-compose-stack.png)
 
 **Request flow:**
 

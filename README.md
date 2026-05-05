@@ -36,6 +36,8 @@ LCMs were introduced in the paper "Latent Consistency Models: Synthesizing High-
 
 ## How Latent Consistency Models Work
 
+![Diffusion vs LCM](images/diffusion-vs-lcm.png)
+
 LCMs are created through a process called **Latent Consistency Distillation**. The core idea is to train a student model (the LCM) to replicate the output of a teacher model (a pre-trained diffusion model like Stable Diffusion) but in far fewer steps.
 
 ### The Consistency Property
@@ -124,24 +126,7 @@ This setup uses LocalAI — an open-source inference server with an OpenAI-compa
 
 ### Architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│                 Docker Container                     │
-│               localai/localai:latest                 │
-│                                                      │
-│  ┌──────────────┐   ┌────────────┐   ┌───────────┐  │
-│  │  GGUF Model  │──►│  sd-ggml   │──►│ LocalAI   │  │
-│  │  ~1.57 GB    │   │  backend   │   │   API     │  │
-│  │  (Q4 quant)  │   │ (C++ CPU)  │   │  :8080    │  │
-│  ├──────────────┤   └────────────┘   └─────┬─────┘  │
-│  │  YAML config │                          │        │
-│  │  (4 steps,   │                     OpenAI-       │
-│  │   LCM samp.) │                   compatible      │
-│  └──────────────┘                          │        │
-└────────────────────────────────────────────┼────────┘
-                                             │
-                                     Client (curl)
-```
+![Alt text](images/localai.png)
 
 ### Step 1 — Create the Project Directory
 
@@ -284,28 +269,7 @@ This setup builds a custom async inference pipeline from scratch using FastAPI, 
 
 ### Architecture
 
-```
-┌────────────────────────────────────────────────────────────┐
-│                    Docker Compose Stack                      │
-│                                                              │
-│  ┌────────────┐    ┌─────────────┐    ┌──────────────────┐  │
-│  │   FastAPI   │───►│    Redis    │───►│  Celery Worker   │  │
-│  │   :8000     │    │    :6379    │    │                  │  │
-│  │             │◄───│             │◄───│  PyTorch (CPU)   │  │
-│  │  (gateway)  │    │  (broker +  │    │  Dreamshaper LCM │  │
-│  │             │    │   results)  │    │  + Tiny VAE      │  │
-│  └──────┬──────┘    └─────────────┘    └────────┬─────────┘  │
-│         │                                       │            │
-│         └──────── /app/outputs (shared) ────────┘            │
-└──────────────────────────────────────────────────────────────┘
-
-Request flow:
-  1. POST /generate → FastAPI validates, queues task in Redis
-  2. Returns 202 Accepted with task_id immediately
-  3. Celery worker picks task, runs LCM inference (~30s)
-  4. Saves PNG to shared volume
-  5. Client polls GET /status/{task_id}, then GET /result/{task_id}
-```
+![Alt text](images/docker-compose-stack.png)
 
 ### Important Note on Model Format
 
@@ -503,6 +467,21 @@ docker compose down -v        # Stop + delete volumes (including cached model)
 ```
 
 ---
+
+## Following Iterations happened to improve the architecture:
+
+### Iteration 1: Model Inside Worker
+![Alt text](images/Iteration-1.png)
+
+### Iteration 2: PVC Model Caching + KEDA
+![Alt text](images/Iteration-2.png)
+
+### Iteration 3: Dedicated Model Server
+![Alt text](images/Iteration-3.png)
+
+### Details related to Docker Compose, Kubernetes and Terraform + Azure setup are in dedicated READMEs.
+
+<br>
 
 ## Extending the Project
 
